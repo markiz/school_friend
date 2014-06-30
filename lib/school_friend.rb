@@ -2,7 +2,7 @@ require 'logger'
 require 'forwardable'
 
 module SchoolFriend
-  REST_NAMESPACES = %w[auth callbacks discussions events friends messages notifications payment photos photos_v2 share stream stream users widget].freeze
+  REST_NAMESPACES = %w[auth callbacks discussions events friends messages notifications payment photos photos_v2 share stream stream url users widget].freeze
 
   class << self
     extend Forwardable
@@ -36,5 +36,6 @@ require 'school_friend/rest/photos'
 require 'school_friend/rest/photos_v2'
 require 'school_friend/rest/share'
 require 'school_friend/rest/stream'
+require 'school_friend/rest/url'
 require 'school_friend/rest/users'
 require 'school_friend/rest/widget'

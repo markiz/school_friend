@@ -15,8 +15,8 @@ module SchoolFriend
     class RequireSessionScopeError < ArgumentError
     end
 
-    class OauthCodeAuthenticationFailedError < StandardError  
-    end  
+    class OauthCodeAuthenticationFailedError < StandardError
+    end
 
     attr_reader :options, :session_scope
 
@@ -86,7 +86,7 @@ module SchoolFriend
           options[:access_token] = response["access_token"]
 
           SchoolFriend.logger.debug "#{__method__}: Token received: #{options[:access_token]}"
-          
+
           return true
         el
           SchoolFriend.logger.warn "#{__method__}: Failed to refresh access token - request Failed"
