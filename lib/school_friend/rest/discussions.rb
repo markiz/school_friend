@@ -5,6 +5,7 @@ module SchoolFriend
 
       api_method :get_list,                      session_only: true
       api_method :get_discussions,               session_only: true
+      api_method :get_comments,                  session_only: true
       api_method :get_discussion_comments_count, session_only: true
       api_method :add_discussion_comment,        session_only: true
       api_method :delete_discussion_comment,     session_only: true
