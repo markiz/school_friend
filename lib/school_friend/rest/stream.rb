@@ -3,7 +3,7 @@ module SchoolFriend
     class Stream
       include APIMethods
 
-      api_method :get
+      api_method :get,     session_only: true
       api_method :publish
     end
   end
