@@ -1,7 +1,7 @@
-require 'net/http'
 require 'digest'
-require 'json'
-
+require 'faraday'
+require 'faraday_middleware'
+require 'uri'
 def keys_to_symbols! (_hash)
   _hash.keys.each do |key|
     _hash[(key.to_sym rescue key) || key] = _hash.delete(key)
@@ -21,15 +21,27 @@ module SchoolFriend
     attr_reader :options, :session_scope
 
     def _post_request(url, params)
-      uri = URI.parse(url)
-      http = Net::HTTP.new(uri.host, 80)
-      data = URI.encode_www_form(params)
+      # uri = URI.parse(url)
+      # http = Net::HTTP.new(uri.host, 80)
+      # data = URI.encode_www_form(params)
 
-      headers = {
-        'Content-Type' => 'application/x-www-form-urlencoded'
-      }
+      # headers = {
+      #   'Content-Type' => 'application/x-www-form-urlencoded'
+      # }
 
-      http.post(uri.path, data, headers)
+      # http.post(uri.path, data, headers)
+      faraday.post(url, params)
+    end
+
+    def _get_request(url, params)
+      faraday.get(url, params)
+    end
+
+    def faraday
+      @faraday ||= Faraday.new do |conn|
+        conn.response :json, :content_type => /\bjson$/
+        conn.adapter Faraday.default_adapter
+      end
     end
 
     def initialize(options = {})
@@ -191,8 +203,8 @@ module SchoolFriend
     def api_call(method, params = {}, force_session_call = false)
       raise RequireSessionScopeError.new('This API call requires session scope') if force_session_call and application_scope?
 
-      uri = build_uri(method, params)
-      Net::HTTP.get_response(uri)
+      uri = build_uri(method, {})
+      _get_request(uri, sign(params)).body
     end
 
     # Builds URI object
@@ -203,7 +215,6 @@ module SchoolFriend
     def build_uri(method, params = {})
       uri = URI(api_server)
       uri.path  = '/api/' + method.sub('.', '/')
-      uri.query = URI.encode_www_form(sign(params))
 
       SchoolFriend.logger.debug "API Request: #{uri}"
 

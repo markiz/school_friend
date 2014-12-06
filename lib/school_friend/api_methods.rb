@@ -21,11 +21,7 @@ module SchoolFriend
           class_eval <<-OES, __FILE__, __LINE__ + 1
             def #{method}(params = {})                          # def get_widgets(params = {})
               response = #{call}                                #   response = session.api_call('widget.getWidgets', params, true)
-              if response.is_a?(Net::HTTPSuccess)               #   if response.is_a?(Net::HTTPSuccess)
-                JSON.parse(response.body, :quirks_mode => true) #     JSON(response.body, :quirks_mode => true)
-              else                                              #   else
-                response.error!                                 #     response.error!
-              end                                               #   end
+              response                                          #   response
             end                                                 # end
           OES
         end
