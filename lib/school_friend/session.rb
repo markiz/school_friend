@@ -21,15 +21,6 @@ module SchoolFriend
     attr_reader :options, :session_scope
 
     def _post_request(url, params)
-      # uri = URI.parse(url)
-      # http = Net::HTTP.new(uri.host, 80)
-      # data = URI.encode_www_form(params)
-
-      # headers = {
-      #   'Content-Type' => 'application/x-www-form-urlencoded'
-      # }
-
-      # http.post(uri.path, data, headers)
       faraday.post(url, params)
     end
 
@@ -80,31 +71,23 @@ module SchoolFriend
     def refresh_access_token
       # true on success false otherwise
       if oauth2_session?
-        response, data = \
-          _post_request(api_server + "/oauth/token.do",
-                        {"refresh_token" => options[:refresh_token],\
-                         "client_id" => SchoolFriend.application_id, "client_secret" => SchoolFriend.secret_key,
-                         "grant_type" => 'refresh_token'})
+        response = _post_request(api_server + "/oauth/token.do",
+                        {"refresh_token" => options[:refresh_token],
+                         "client_id" => SchoolFriend.application_id,
+                         "client_secret" => SchoolFriend.secret_key,
+                         "grant_type" => 'refresh_token'}).body
 
-        if response.is_a?(Net::HTTPSuccess)
-          response = JSON(response.body)
-
-          if response.has_key?("error")
-            SchoolFriend.logger.warn "#{__method__}: failed to refresh access token - #{response["error"]}"
-
-            return false
-          end
-
-          options[:access_token] = response["access_token"]
-
-          SchoolFriend.logger.debug "#{__method__}: Token received: #{options[:access_token]}"
-
-          return true
-        el
-          SchoolFriend.logger.warn "#{__method__}: Failed to refresh access token - request Failed"
+        if response.has_key?("error")
+          SchoolFriend.logger.warn "#{__method__}: failed to refresh access token - #{response["error"]}"
 
           return false
         end
+
+        options[:access_token] = response["access_token"]
+
+        SchoolFriend.logger.debug "#{__method__}: Token received: #{options[:access_token]}"
+
+        return true
       else
         return false
       end
