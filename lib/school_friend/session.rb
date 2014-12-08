@@ -2,13 +2,6 @@ require 'digest'
 require 'faraday'
 require 'faraday_middleware'
 require 'uri'
-def keys_to_symbols! (_hash)
-  _hash.keys.each do |key|
-    _hash[(key.to_sym rescue key) || key] = _hash.delete(key)
-  end
-
-  return _hash
-end
 
 module SchoolFriend
   class Session
@@ -35,36 +28,10 @@ module SchoolFriend
     attr_reader :options, :session_scope
 
     def initialize(options = {})
-      @options       = keys_to_symbols!(options)
+      @options       = symbolize_keys(options)
       @session_scope = (options[:session_key] && options[:session_secret_key]) || \
                            options[:oauth_code] || \
                            (options[:access_token] && options[:refresh_token])
-
-    # only has oauth_code, get access_token
-    if options[:oauth_code]
-      response, data = \
-        post_request("/oauth/token.do",
-                      {"code" => options[:oauth_code], "redirect_uri" => "http://127.0.0.1:2000",
-                       "client_id" => SchoolFriend.application_id, "client_secret" => SchoolFriend.secret_key,
-                       "grant_type" => 'authorization_code'})
-
-        if response.is_a?(Net::HTTPSuccess)
-          response = JSON(response.body)
-
-          if response.has_key?("error")
-              raise OauthCodeAuthenticationFailedError, "failed to use oauth_code for authentication: #{response["error"]}: #{response["error_description"]}"
-          end
-
-          options[:access_token] = response["access_token"]
-          options[:refresh_token] = response["refresh_token"]
-
-          SchoolFriend.logger.debug "Tokens received: #{options[:access_token]} #{options[:refresh_token]}"
-        else
-          raise OauthCodeAuthenticationFailedError, "failed to use oauth_code for authentication - Request Failed"
-        end
-
-        options.delete(:oauth_code)
-      end
     end
 
     def refresh_access_token
@@ -172,6 +139,8 @@ module SchoolFriend
       params
     end
 
+    private
+
     # Returns additional params which are required for all requests.
     # Depends on request scope.
     #
@@ -224,6 +193,17 @@ module SchoolFriend
         conn.adapter Faraday.default_adapter
       end
     end
+
+    def symbolize_keys(hash)
+      hash.each_with_object({}) do |(key, value), result|
+        if key.respond_to?(:to_sym)
+          result[key.to_sym] = value
+        else
+          result[key] = value
+        end
+      end
+    end
+
 
     SchoolFriend::REST_NAMESPACES.each do |namespace|
       class_eval <<-EOS, __FILE__, __LINE__ + 1
