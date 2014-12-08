@@ -179,7 +179,7 @@ module SchoolFriend
 
     def assert_api_call_success!(response)
       body = response.body
-      if body.key?('error_code')
+      if body.kind_of?(Hash) && body.key?('error_code')
         SchoolFriend.logger.error "#{__method__}: api call error - #{body["error_msg"]}"
         raise ApiError.new("Error #{body['error_code']}: #{body['error_msg']}", response)
       end

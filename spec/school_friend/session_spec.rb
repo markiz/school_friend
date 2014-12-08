@@ -20,6 +20,13 @@ describe SchoolFriend::Session do
           to_return(body: '{"error_code":100,"error_msg":"PARAM : Missing required parameter url","error_data":null}', headers: { content_type: 'application/json' })
       expect { subject.api_call('url.getInfo') }.to raise_error(SchoolFriend::Session::ApiError)
     end
+
+    it "handles non-hash responses" do
+      stub_request(:get, %r{api\.odnoklassniki\.ru/api/users/getInfo}).
+          to_return(body: '[{"uid":"261777630248","name":"Максим Глазунов"}]', headers: { content_type: 'application/json' })
+      subject.api_call('users.getInfo', { uids: '261777630248', fields: 'name' }).should ==
+          [{'uid' => '261777630248', 'name' => 'Максим Глазунов'}]
+    end
   end
 
   describe "#refresh" do
