@@ -32,6 +32,12 @@ describe SchoolFriend::Session do
       subject.access_token = nil
       expect { subject.api_call('users.getInfo', {}, true) }.to raise_error(SchoolFriend::Session::AuthRequired)
     end
+
+    it "supports quirky json responses" do
+      stub_request(:get, %r{api\.odnoklassniki\.ru/api/users/isAppUser}).
+          to_return(body: 'true', headers: { content_type: 'application/json' })
+      subject.api_call('users.isAppUser').should == true
+    end
   end
 
   describe "#refresh" do

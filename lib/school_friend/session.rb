@@ -5,6 +5,12 @@ require 'uri'
 
 module SchoolFriend
   class Session
+    class QuirkyJsonMiddleware < FaradayMiddleware::ParseJson
+      define_parser do |body|
+        ::JSON.parse(body, quirks_mode: true) unless body.strip.empty?
+      end
+    end
+
     class ErrorWithResponse < StandardError
       attr_reader :response
       def initialize(message, response = nil)
@@ -193,7 +199,7 @@ module SchoolFriend
       @faraday ||= Faraday.new(api_server) do |conn|
         conn.request :url_encoded
         conn.response :raise_error
-        conn.response :json, :content_type => /\bjson$/
+        conn.use QuirkyJsonMiddleware, :content_type => /\bjson$/
         conn.adapter Faraday.default_adapter
       end
     end
