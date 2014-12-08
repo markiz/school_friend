@@ -12,6 +12,20 @@ end
 
 module SchoolFriend
   class Session
+    class ErrorWithResponse < StandardError
+      attr_reader :response
+      def initialize(message, response = nil)
+        @response = response
+        super(message)
+      end
+    end
+
+    class ApiError < ErrorWithResponse
+    end
+
+    class AuthError < ErrorWithResponse
+    end
+
     class RequireSessionScopeError < ArgumentError
     end
 
@@ -19,21 +33,6 @@ module SchoolFriend
     end
 
     attr_reader :options, :session_scope
-
-    def _post_request(url, params)
-      faraday.post(url, params)
-    end
-
-    def _get_request(url, params)
-      faraday.get(url, params)
-    end
-
-    def faraday
-      @faraday ||= Faraday.new do |conn|
-        conn.response :json, :content_type => /\bjson$/
-        conn.adapter Faraday.default_adapter
-      end
-    end
 
     def initialize(options = {})
       @options       = keys_to_symbols!(options)
@@ -44,7 +43,7 @@ module SchoolFriend
     # only has oauth_code, get access_token
     if options[:oauth_code]
       response, data = \
-        _post_request(api_server + "/oauth/token.do",
+        post_request("/oauth/token.do",
                       {"code" => options[:oauth_code], "redirect_uri" => "http://127.0.0.1:2000",
                        "client_id" => SchoolFriend.application_id, "client_secret" => SchoolFriend.secret_key,
                        "grant_type" => 'authorization_code'})
@@ -69,28 +68,18 @@ module SchoolFriend
     end
 
     def refresh_access_token
-      # true on success false otherwise
-      if oauth2_session?
-        response = _post_request(api_server + "/oauth/token.do",
-                        {"refresh_token" => options[:refresh_token],
-                         "client_id" => SchoolFriend.application_id,
-                         "client_secret" => SchoolFriend.secret_key,
-                         "grant_type" => 'refresh_token'}).body
+      assert_oauth2!(__method__)
+      response = post_request(api_server + "/oauth/token.do",
+                      {"refresh_token" => options[:refresh_token],
+                       "client_id" => SchoolFriend.application_id,
+                       "client_secret" => SchoolFriend.secret_key,
+                       "grant_type" => 'refresh_token'})
 
-        if response.has_key?("error")
-          SchoolFriend.logger.warn "#{__method__}: failed to refresh access token - #{response["error"]}"
+      assert_oauth_success!(response)
+      options[:access_token] = response.body["access_token"]
+      SchoolFriend.logger.debug "#{__method__}: Token received: #{options[:access_token]}"
 
-          return false
-        end
-
-        options[:access_token] = response["access_token"]
-
-        SchoolFriend.logger.debug "#{__method__}: Token received: #{options[:access_token]}"
-
-        return true
-      else
-        return false
-      end
+      true
     end
 
     # Returns true if API call is performed in session scope
@@ -134,10 +123,41 @@ module SchoolFriend
       SchoolFriend.api_server
     end
 
+
+    # Performs API call to Odnoklassniki
+    #
+    # @example Performs API call in current scope
+    #   school_friend = SchoolFriend::Session.new
+    #   school_friend.api_call('widget.getWidgets', wids: 'mobile-header,mobile-footer') # Net::HTTPResponse
+    #
+    # @example Force performs API call in session scope
+    #   school_friend = SchoolFriend::Session.new
+    #   school_friend.api_call('widget.getWidgets', {wids: 'mobile-header,mobile-footer'}, true) # SchoolFriend::Session::RequireSessionScopeError
+    #
+    #
+    # @param [String] method API method
+    # @param [Hash] params params which should be sent to portal
+    # @param [FalseClass, TrueClass] force_session_call says if this call should be performed in session scope
+    # @return [Net::HTTPResponse]
+    def api_call(method, params = {}, force_session_call = false)
+      raise RequireSessionScopeError.new('This API call requires session scope') if force_session_call and application_scope?
+      response = get_request(uri_for_method(method), sign(params))
+      assert_api_call_success!(response)
+      response.body
+    end
+
+    # Returns URI string for a method
+    #
+    # @param [String] method request method
+    # @return [URI::HTTP]
+    def uri_for_method(method)
+      '/api/' + method.sub('.', '/')
+    end
+
     # Signs params
     #
     # @param [Hash] params
-    # @return [Hash] returns modified params
+    # @return [Hash] returns signed params
     def sign(params = {})
       params = additional_params.merge(params)
       digest = params.sort_by(&:first).map{ |key, value| "#{key}=#{value}" }.join
@@ -168,40 +188,41 @@ module SchoolFriend
       end
     end
 
-    # Performs API call to Odnoklassniki
-    #
-    # @example Performs API call in current scope
-    #   school_friend = SchoolFriend::Session.new
-    #   school_friend.api_call('widget.getWidgets', wids: 'mobile-header,mobile-footer') # Net::HTTPResponse
-    #
-    # @example Force performs API call in session scope
-    #   school_friend = SchoolFriend::Session.new
-    #   school_friend.api_call('widget.getWidgets', {wids: 'mobile-header,mobile-footer'}, true) # SchoolFriend::Session::RequireSessionScopeError
-    #
-    #
-    # @param [String] method API method
-    # @param [Hash] params params which should be sent to portal
-    # @param [FalseClass, TrueClass] force_session_call says if this call should be performed in session scope
-    # @return [Net::HTTPResponse]
-    def api_call(method, params = {}, force_session_call = false)
-      raise RequireSessionScopeError.new('This API call requires session scope') if force_session_call and application_scope?
-
-      uri = build_uri(method, {})
-      _get_request(uri, sign(params)).body
+    def post_request(url, params)
+      faraday.post(url, params)
     end
 
-    # Builds URI object
-    #
-    # @param [String] method request method
-    # @param [Hash] params request params
-    # @return [URI::HTTP]
-    def build_uri(method, params = {})
-      uri = URI(api_server)
-      uri.path  = '/api/' + method.sub('.', '/')
+    def get_request(url, params)
+      faraday.get(url, params)
+    end
 
-      SchoolFriend.logger.debug "API Request: #{uri}"
+    def assert_oauth2!(method)
+      raise ArgumentError, "session was initialized without oauth params, calling #{method} doesn't make sense" unless oauth2_session?
+    end
 
-      uri
+    def assert_oauth_success!(response)
+      body = response.body
+      if body.has_key?("error")
+        SchoolFriend.logger.error "#{__method__}: failed to refresh access token - #{body["error"]}"
+        raise AuthError.new("#{body['error']}: #{body['error_description']}", response)
+      end
+    end
+
+    def assert_api_call_success!(response)
+      body = response.body
+      if body.key?('error_code')
+        SchoolFriend.logger.error "#{__method__}: api call error - #{body["error_msg"]}"
+        raise ApiError.new("Error #{body['error_code']}: #{body['error_msg']}", response)
+      end
+    end
+
+    def faraday
+      @faraday ||= Faraday.new(api_server) do |conn|
+        conn.request :url_encoded
+        conn.response :raise_error
+        conn.response :json, :content_type => /\bjson$/
+        conn.adapter Faraday.default_adapter
+      end
     end
 
     SchoolFriend::REST_NAMESPACES.each do |namespace|
