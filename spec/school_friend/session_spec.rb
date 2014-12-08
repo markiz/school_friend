@@ -27,6 +27,11 @@ describe SchoolFriend::Session do
       subject.api_call('users.getInfo', { uids: '261777630248', fields: 'name' }).should ==
           [{'uid' => '261777630248', 'name' => 'Максим Глазунов'}]
     end
+
+    it "raises when session requires authentication and no oauth token is provided" do
+      subject.access_token = nil
+      expect { subject.api_call('users.getInfo', {}, true) }.to raise_error(SchoolFriend::Session::AuthRequired)
+    end
   end
 
   describe "#refresh" do
@@ -37,7 +42,7 @@ describe SchoolFriend::Session do
 
     it "updates its own access token" do
       subject.refresh_access_token
-      subject.options[:access_token].should == 'abcdef123456'
+      subject.access_token.should == 'abcdef123456'
     end
 
     it "raises on errors" do
@@ -47,8 +52,8 @@ describe SchoolFriend::Session do
     end
 
     it "raises on non-auth2 sessions" do
-      subject.options[:access_token] = nil
-      subject.options[:refresh_token] = nil
+      subject.access_token = nil
+      subject.refresh_token = nil
       expect { subject.refresh_access_token }.to raise_error(ArgumentError)
     end
   end

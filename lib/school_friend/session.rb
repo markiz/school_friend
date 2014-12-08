@@ -13,56 +13,54 @@ module SchoolFriend
       end
     end
 
+    class AuthRequired < StandardError
+    end
+
     class ApiError < ErrorWithResponse
     end
 
     class AuthError < ErrorWithResponse
     end
 
-    class RequireSessionScopeError < ArgumentError
-    end
-
-    class OauthCodeAuthenticationFailedError < StandardError
-    end
-
-    attr_reader :options, :session_scope
+    attr_reader :options
 
     def initialize(options = {})
-      @options       = symbolize_keys(options)
-      @session_scope = (options[:session_key] && options[:session_secret_key]) || \
-                           options[:oauth_code] || \
-                           (options[:access_token] && options[:refresh_token])
+      @options = symbolize_keys(options)
+    end
+
+    def access_token=(token)
+      options[:access_token] = token
+    end
+
+    def access_token
+      options[:access_token]
+    end
+
+    def refresh_token=(token)
+      options[:refresh_token] = token
+    end
+
+    def refresh_token
+      options[:refresh_token]
     end
 
     def refresh_access_token
-      assert_oauth2!(__method__)
+      assert_refresh_token!(__method__)
       response = post_request(api_server + "/oauth/token.do",
-                      {"refresh_token" => options[:refresh_token],
-                       "client_id" => SchoolFriend.application_id,
-                       "client_secret" => SchoolFriend.secret_key,
+                      {"refresh_token" => refresh_token,
+                       "client_id" => application_id,
+                       "client_secret" => secret_key,
                        "grant_type" => 'refresh_token'})
 
       assert_oauth_success!(response)
-      options[:access_token] = response.body["access_token"]
-      SchoolFriend.logger.debug "#{__method__}: Token received: #{options[:access_token]}"
+      self.access_token = response.body["access_token"]
+      SchoolFriend.logger.debug "#{__method__}: Token received: #{access_token}"
 
       true
     end
 
-    # Returns true if API call is performed in session scope
-    #
-    # @return [TrueClass, FalseClass]
-    alias_method :session_scope?, :session_scope
-
-    # Returns true if API call is performed in application scope
-    #
-    # @return [TrueClass, FalseClass]
-    def application_scope?
-      not session_scope?
-    end
-
     def oauth2_session?
-      options[:access_token] && options[:refresh_token]
+      !!access_token
     end
 
     # Returns application key
@@ -72,15 +70,25 @@ module SchoolFriend
       SchoolFriend.application_key
     end
 
+    # Returns application id
+    #
+    # @return [String]
+    def application_id
+      SchoolFriend.application_id
+    end
+
+    # Returns application secret key
+    #
+    # @return [String]
+    def secret_key
+      SchoolFriend.secret_key
+    end
+
     # Returns signature for signing request params
     #
     # @return [String]
     def signature
-      unless session_scope?
-        return SchoolFriend.secret_key
-      end
-
-      options[:access_token] || options[:session_secret_key]
+      access_token
     end
 
     # Returns API server
@@ -95,19 +103,19 @@ module SchoolFriend
     #
     # @example Performs API call in current scope
     #   school_friend = SchoolFriend::Session.new
-    #   school_friend.api_call('widget.getWidgets', wids: 'mobile-header,mobile-footer') # Net::HTTPResponse
+    #   school_friend.api_call('widget.getWidgets', wids: 'mobile-header,mobile-footer') # decoded api response
     #
     # @example Force performs API call in session scope
     #   school_friend = SchoolFriend::Session.new
-    #   school_friend.api_call('widget.getWidgets', {wids: 'mobile-header,mobile-footer'}, true) # SchoolFriend::Session::RequireSessionScopeError
+    #   school_friend.api_call('widget.getWidgets', {wids: 'mobile-header,mobile-footer'}, true) # SchoolFriend::Session::AuthRequired
     #
     #
     # @param [String] method API method
     # @param [Hash] params params which should be sent to portal
     # @param [FalseClass, TrueClass] force_session_call says if this call should be performed in session scope
-    # @return [Net::HTTPResponse]
+    # @return [Hash]
     def api_call(method, params = {}, force_session_call = false)
-      raise RequireSessionScopeError.new('This API call requires session scope') if force_session_call and application_scope?
+      assert_oauth2!(method) if force_session_call
       response = get_request(uri_for_method(method), sign(params))
       assert_api_call_success!(response)
       response.body
@@ -126,12 +134,12 @@ module SchoolFriend
     # @param [Hash] params
     # @return [Hash] returns signed params
     def sign(params = {})
-      params = additional_params.merge(params)
+      params = stringify_keys(additional_params.merge(params))
       digest = params.sort_by(&:first).map{ |key, value| "#{key}=#{value}" }.join
 
       if oauth2_session?
-        params[:sig] = Digest::MD5.hexdigest("#{digest}" + Digest::MD5.hexdigest(options[:access_token] + SchoolFriend.secret_key))
-        params[:access_token] = options[:access_token]
+        params[:sig] = Digest::MD5.hexdigest("#{digest}" + Digest::MD5.hexdigest(access_token + secret_key))
+        params[:access_token] = access_token
       else
         params[:sig] = Digest::MD5.hexdigest("#{digest}#{signature}")
       end
@@ -146,15 +154,7 @@ module SchoolFriend
     #
     # @return [Hash]
     def additional_params
-      @additional_params ||= if session_scope?
-        if oauth2_session?
-          {application_key: application_key}
-        else
-          {application_key: application_key, session_key: options[:session_key]}
-        end
-      else
-        {application_key: application_key}
-      end
+      @additional_params ||= { application_key: application_key }
     end
 
     def post_request(url, params)
@@ -166,7 +166,11 @@ module SchoolFriend
     end
 
     def assert_oauth2!(method)
-      raise ArgumentError, "session was initialized without oauth params, calling #{method} doesn't make sense" unless oauth2_session?
+      raise AuthRequired, "session was initialized without access token, calling #{method} doesn't make sense" unless oauth2_session?
+    end
+
+    def assert_refresh_token!(method)
+      raise ArgumentError, "session was initialized without refresh token, calling #{method} doesn't make sense" unless refresh_token
     end
 
     def assert_oauth_success!(response)
@@ -204,6 +208,11 @@ module SchoolFriend
       end
     end
 
+    def stringify_keys(hash)
+      hash.each_with_object({}) do |(key, value), result|
+        result[key.to_s] = value
+      end
+    end
 
     SchoolFriend::REST_NAMESPACES.each do |namespace|
       class_eval <<-EOS, __FILE__, __LINE__ + 1

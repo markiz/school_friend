@@ -1,12 +1,12 @@
 # SchoolFriend
 
-TODO: Write a gem description
+OAuth2 client for odnoklassniki.ru
 
 ## Installation
 
 Add this line to your application's Gemfile:
 
-    gem 'school_friend'
+    gem 'school_friend', git: 'https://github.com/markiz/school_friend.git'
 
 And then execute:
 
@@ -24,7 +24,7 @@ SchoolFriend.application_key = ''
 SchoolFriend.secret_key = ''
 SchoolFriend.api_server = 'http://api.odnoklassniki.ru'
 
-# Example call to a method that doesn't require a session or oauth2 access token  
+# Example call to a method that doesn't require a session or oauth2 access token
 puts SchoolFriend.users.is_app_user(:uid => "425634635") # Note that method name is underscored
 
 # Init an Oauth2 Session
