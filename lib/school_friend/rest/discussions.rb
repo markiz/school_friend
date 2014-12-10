@@ -12,6 +12,7 @@ module SchoolFriend
       api_method :delete_discussion_comment,     session_only: true
       api_method :get_discussion_comments,       session_only: true
       api_method :mark_discussion_as_read,       session_only: true
+      api_method :get_discussion_likes,          session_only: true
     end
   end
 end
