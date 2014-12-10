@@ -17,4 +17,10 @@ Gem::Specification.new do |gem|
   gem.executables           = gem.files.grep(%r{^bin/}).map{ |f| File.basename(f) }
   gem.test_files            = gem.files.grep(%r{^(test|spec|features)/})
   gem.require_paths         = %w[lib]
+
+  gem.add_dependency 'faraday', '>= 0.8.0'
+  gem.add_dependency 'faraday_middleware', '>= 0.9.0'
+  gem.add_development_dependency 'pry', '>= 0'
+  gem.add_development_dependency 'rspec', '~> 3.0'
+  gem.add_development_dependency 'webmock', '~> 1.20'
 end
